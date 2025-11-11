@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Card,
   CardContent,
@@ -13,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Trash2, DollarSign, TrendingUp } from "lucide-react";
+import { Plus, Trash2, TrendingUp, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -22,56 +24,147 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import type { Database } from "@/lib/types/database.types";
 
-interface BudgetItem {
-  id: string;
-  category: string;
-  amount: number;
-  paid: boolean;
-}
+type BudgetItem = Database["public"]["Tables"]["budget_items"]["Row"];
 
 export function BudgetTracker() {
+  const { user } = useAuth();
+  const supabase = createClient();
+  const [loading, setLoading] = useState(true);
   const [totalBudget, setTotalBudget] = useState<number>(50000);
-  const [items, setItems] = useState<BudgetItem[]>([
-    { id: "1", category: "Venue", amount: 15000, paid: false },
-    { id: "2", category: "Catering", amount: 12000, paid: false },
-    { id: "3", category: "Photography", amount: 5000, paid: false },
-    { id: "4", category: "Flowers", amount: 3000, paid: false },
-  ]);
+  const [items, setItems] = useState<BudgetItem[]>([]);
   const [newCategory, setNewCategory] = useState("");
   const [newAmount, setNewAmount] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [savingBudget, setSavingBudget] = useState(false);
 
-  const totalSpent = items.reduce((sum, item) => sum + item.amount, 0);
-  const remaining = totalBudget - totalSpent;
-  const percentage = (totalSpent / totalBudget) * 100;
+  useEffect(() => {
+    if (user) {
+      fetchBudgetData();
+    }
+  }, [user]);
 
-  const addItem = () => {
-    if (newCategory && newAmount) {
-      const newItem: BudgetItem = {
-        id: Date.now().toString(),
-        category: newCategory,
-        amount: parseFloat(newAmount),
-        paid: false,
-      };
-      setItems([...items, newItem]);
-      setNewCategory("");
-      setNewAmount("");
-      setIsDialogOpen(false);
+  const fetchBudgetData = async () => {
+    try {
+      setLoading(true);
+
+      // Fetch profile for total budget
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("total_budget")
+        .eq("id", user!.id)
+        .single();
+
+      if (profile) {
+        setTotalBudget(Number(profile.total_budget) || 50000);
+      }
+
+      // Fetch budget items
+      const { data: budgetItems, error } = await supabase
+        .from("budget_items")
+        .select("*")
+        .eq("user_id", user!.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setItems(budgetItems || []);
+    } catch (error) {
+      console.error("Error fetching budget data:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const deleteItem = (id: string) => {
-    setItems(items.filter((item) => item.id !== id));
+  const updateTotalBudget = async (newBudget: number) => {
+    setSavingBudget(true);
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ total_budget: newBudget })
+        .eq("id", user!.id);
+
+      if (error) throw error;
+      setTotalBudget(newBudget);
+    } catch (error) {
+      console.error("Error updating total budget:", error);
+    } finally {
+      setSavingBudget(false);
+    }
   };
 
-  const togglePaid = (id: string) => {
-    setItems(
-      items.map((item) =>
-        item.id === id ? { ...item, paid: !item.paid } : item
-      )
-    );
+  const addItem = async () => {
+    if (newCategory && newAmount && user) {
+      try {
+        const { data, error } = await supabase
+          .from("budget_items")
+          .insert({
+            user_id: user.id,
+            category: newCategory,
+            amount: parseFloat(newAmount),
+            paid: false,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+          setItems([data, ...items]);
+          setNewCategory("");
+          setNewAmount("");
+          setIsDialogOpen(false);
+        }
+      } catch (error) {
+        console.error("Error adding budget item:", error);
+      }
+    }
   };
+
+  const deleteItem = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from("budget_items")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+      setItems(items.filter((item) => item.id !== id));
+    } catch (error) {
+      console.error("Error deleting budget item:", error);
+    }
+  };
+
+  const togglePaid = async (id: string, currentPaidStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from("budget_items")
+        .update({ paid: !currentPaidStatus })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      setItems(
+        items.map((item) =>
+          item.id === id ? { ...item, paid: !currentPaidStatus } : item
+        )
+      );
+    } catch (error) {
+      console.error("Error updating budget item:", error);
+    }
+  };
+
+  const totalSpent = items.reduce((sum, item) => sum + Number(item.amount), 0);
+  const remaining = totalBudget - totalSpent;
+  const percentage = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -136,7 +229,9 @@ export function BudgetTracker() {
                 type="number"
                 value={totalBudget}
                 onChange={(e) => setTotalBudget(parseFloat(e.target.value) || 0)}
+                onBlur={(e) => updateTotalBudget(parseFloat(e.target.value) || 0)}
                 className="mt-2"
+                disabled={savingBudget}
               />
             </div>
           </CardContent>
@@ -205,7 +300,7 @@ export function BudgetTracker() {
                     <input
                       type="checkbox"
                       checked={item.paid}
-                      onChange={() => togglePaid(item.id)}
+                      onChange={() => togglePaid(item.id, item.paid)}
                       className="h-4 w-4 cursor-pointer"
                     />
                     <div className="flex-1">
@@ -220,7 +315,7 @@ export function BudgetTracker() {
                   </div>
                   <div className="flex items-center gap-4">
                     <span className="font-semibold">
-                      ${item.amount.toLocaleString()}
+                      ${Number(item.amount).toLocaleString()}
                     </span>
                     <Button
                       variant="ghost"

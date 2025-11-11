@@ -1,16 +1,26 @@
 # PwedMin - Wedding Planner Template
 
-A beautiful, modern, and minimalist wedding planner built with Next.js 15, TypeScript, and Tailwind CSS. Designed to help couples plan their dream wedding with ease and elegance.
+A beautiful, modern, and minimalist wedding planner built with Next.js 15, TypeScript, Tailwind CSS, and Supabase. Designed to help couples plan their dream wedding with ease and elegance. Features complete authentication and real-time data persistence.
 
 ## Features
+
+### Authentication & Security
+- Secure user authentication with Supabase Auth
+- Email/password signup and login
+- Email verification
+- Password reset functionality
+- Protected routes
+- Row Level Security (RLS) for complete data isolation
+- Secure session management
 
 ### Smart Budget Tracker
 - Automatically calculates total expenses
 - Track spending across multiple categories
 - Visual progress indicators
 - Mark expenses as paid
-- Real-time budget calculations
+- Real-time budget calculations and persistence
 - Over/under budget warnings
+- Cloud-synced across devices
 
 ### Wedding Checklist
 - Comprehensive task management
@@ -19,6 +29,7 @@ A beautiful, modern, and minimalist wedding planner built with Next.js 15, TypeS
 - Mark tasks as complete
 - Add custom tasks
 - Filter by category
+- Persistent storage with Supabase
 
 ### Supplier List
 - Manage all wedding vendors in one place
@@ -27,6 +38,7 @@ A beautiful, modern, and minimalist wedding planner built with Next.js 15, TypeS
 - Add notes for each vendor
 - Beautiful card-based layout
 - Easy supplier management
+- Cloud-based storage
 
 ### Guest List Manager
 - Complete guest management system
@@ -36,6 +48,7 @@ A beautiful, modern, and minimalist wedding planner built with Next.js 15, TypeS
 - Dietary restrictions tracking
 - Guest statistics and analytics
 - Filter by RSVP status
+- Real-time updates
 
 ### Dashboard
 - Wedding countdown timer
@@ -44,10 +57,13 @@ A beautiful, modern, and minimalist wedding planner built with Next.js 15, TypeS
 - Recent activity feed
 - Visual progress indicators
 - Budget and task summaries
+- User profile management
 
 ## Tech Stack
 
 - **Framework**: Next.js 15 (App Router)
+- **Backend**: Supabase (PostgreSQL database)
+- **Authentication**: Supabase Auth
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
 - **UI Components**: shadcn/ui + Radix UI

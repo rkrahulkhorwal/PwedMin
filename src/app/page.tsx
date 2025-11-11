@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { Header } from "@/components/layout/Header";
 import { Navigation } from "@/components/layout/Navigation";
 import { Dashboard } from "@/components/features/Dashboard";
@@ -30,16 +31,18 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-pink-50 via-white to-purple-50">
-      <Header />
-      <div className="flex flex-1 flex-col md:flex-row">
-        <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
-        <main className="flex-1 p-6 md:p-8 overflow-auto">
-          <div className="max-w-7xl mx-auto">
-            {renderContent()}
-          </div>
-        </main>
+    <ProtectedRoute>
+      <div className="min-h-screen flex flex-col bg-gradient-to-br from-pink-50 via-white to-purple-50">
+        <Header />
+        <div className="flex flex-1 flex-col md:flex-row">
+          <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
+          <main className="flex-1 p-6 md:p-8 overflow-auto">
+            <div className="max-w-7xl mx-auto">
+              {renderContent()}
+            </div>
+          </main>
+        </div>
       </div>
-    </div>
+    </ProtectedRoute>
   );
 }
