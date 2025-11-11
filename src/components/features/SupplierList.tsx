@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { getSupplierCategories } from "@/lib/services/categoryService";
 import {
   Card,
   CardContent,
@@ -31,14 +32,14 @@ export function SupplierList() {
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [formData, setFormData] = useState<Partial<Supplier>>({
-    category: "Venue",
-  });
+  const [formData, setFormData] = useState<Partial<Supplier>>({});
 
   useEffect(() => {
     if (user) {
       fetchSuppliers();
+      fetchCategories();
     }
   }, [user]);
 
@@ -60,27 +61,24 @@ export function SupplierList() {
     }
   };
 
-  const categories = [
-    "Venue",
-    "Catering",
-    "Photography",
-    "Videography",
-    "Florist",
-    "Music/DJ",
-    "Decor",
-    "Transportation",
-    "Other",
-  ];
+  const fetchCategories = async () => {
+    try {
+      const data = await getSupplierCategories();
+      setCategories(data.map(cat => cat.name));
+    } catch (error) {
+      console.error("Error fetching categories:", error);
+    }
+  };
 
   const addSupplier = async () => {
-    if (formData.name && formData.contact_person && user) {
+    if (formData.name && formData.contact_person && formData.category && user) {
       try {
         const { data, error } = await supabase
           .from("suppliers")
           .insert({
             user_id: user.id,
             name: formData.name,
-            category: formData.category || "Other",
+            category: formData.category,
             contact_person: formData.contact_person,
             email: formData.email || "",
             phone: formData.phone || "",
@@ -94,7 +92,7 @@ export function SupplierList() {
 
         if (data) {
           setSuppliers([data, ...suppliers]);
-          setFormData({ category: "Venue" });
+          setFormData({});
           setIsDialogOpen(false);
         }
       } catch (error) {

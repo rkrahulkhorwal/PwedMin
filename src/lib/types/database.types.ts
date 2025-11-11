@@ -9,6 +9,72 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      supplier_categories: {
+        Row: {
+          id: string
+          name: string
+          display_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          display_order?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          display_order?: number
+          created_at?: string
+        }
+      }
+      checklist_categories: {
+        Row: {
+          id: string
+          name: string
+          label: string
+          display_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          label: string
+          display_order?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          label?: string
+          display_order?: number
+          created_at?: string
+        }
+      }
+      rsvp_statuses: {
+        Row: {
+          id: string
+          name: string
+          label: string
+          display_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          label: string
+          display_order?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          label?: string
+          display_order?: number
+          created_at?: string
+        }
+      }
       profiles: {
         Row: {
           id: string

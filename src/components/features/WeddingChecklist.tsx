@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { getChecklistCategories } from "@/lib/services/categoryService";
 import {
   Card,
   CardContent,
@@ -34,13 +35,15 @@ export function WeddingChecklist() {
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<ChecklistItem[]>([]);
+  const [categories, setCategories] = useState<Array<{ id: string; label: string }>>([]);
   const [newTask, setNewTask] = useState("");
-  const [newCategory, setNewCategory] = useState("planning");
+  const [newCategory, setNewCategory] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
       fetchTasks();
+      fetchCategories();
     }
   }, [user]);
 
@@ -62,19 +65,18 @@ export function WeddingChecklist() {
     }
   };
 
+  const fetchCategories = async () => {
+    try {
+      const data = await getChecklistCategories();
+      setCategories(data.map(cat => ({ id: cat.name, label: cat.label })));
+    } catch (error) {
+      console.error("Error fetching categories:", error);
+    }
+  };
+
   const completedTasks = tasks.filter((task) => task.completed).length;
   const totalTasks = tasks.length;
   const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
-
-  const categories = [
-    { id: "all", label: "All Tasks" },
-    { id: "venue", label: "Venue" },
-    { id: "vendors", label: "Vendors" },
-    { id: "guests", label: "Guests" },
-    { id: "food", label: "Food & Drink" },
-    { id: "decor", label: "Decor" },
-    { id: "planning", label: "Planning" },
-  ];
 
   const toggleTask = async (id: string, currentCompleted: boolean) => {
     try {
@@ -96,7 +98,7 @@ export function WeddingChecklist() {
   };
 
   const addTask = async () => {
-    if (newTask.trim() && user) {
+    if (newTask.trim() && newCategory && user) {
       try {
         const { data, error } = await supabase
           .from("checklist_items")
@@ -115,6 +117,7 @@ export function WeddingChecklist() {
         if (data) {
           setTasks([data, ...tasks]);
           setNewTask("");
+          setNewCategory("");
           setIsDialogOpen(false);
         }
       } catch (error) {
@@ -191,12 +194,14 @@ export function WeddingChecklist() {
                   onChange={(e) => setNewCategory(e.target.value)}
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
                 >
-                  <option value="planning">Planning</option>
-                  <option value="venue">Venue</option>
-                  <option value="vendors">Vendors</option>
-                  <option value="guests">Guests</option>
-                  <option value="food">Food & Drink</option>
-                  <option value="decor">Decor</option>
+                  <option value="">Select a category</option>
+                  {categories
+                    .filter(cat => cat.id !== "all")
+                    .map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.label}
+                      </option>
+                    ))}
                 </select>
               </div>
               <Button onClick={addTask} className="w-full">

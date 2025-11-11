@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { getRsvpStatuses } from "@/lib/services/categoryService";
 import {
   Card,
   CardContent,
@@ -32,15 +33,16 @@ export function GuestList() {
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [guests, setGuests] = useState<Guest[]>([]);
+  const [rsvpStatuses, setRsvpStatuses] = useState<Array<{ name: string; label: string }>>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [formData, setFormData] = useState<Partial<Guest>>({
-    rsvp_status: "pending",
     plus_one: false,
   });
 
   useEffect(() => {
     if (user) {
       fetchGuests();
+      fetchRsvpStatuses();
     }
   }, [user]);
 
@@ -62,6 +64,19 @@ export function GuestList() {
     }
   };
 
+  const fetchRsvpStatuses = async () => {
+    try {
+      const data = await getRsvpStatuses();
+      setRsvpStatuses(data.map(status => ({ name: status.name, label: status.label })));
+      // Set default RSVP status to first status (pending)
+      if (data.length > 0 && !formData.rsvp_status) {
+        setFormData(prev => ({ ...prev, rsvp_status: data[0].name as "pending" | "accepted" | "declined" }));
+      }
+    } catch (error) {
+      console.error("Error fetching RSVP statuses:", error);
+    }
+  };
+
   const totalGuests = guests.reduce(
     (sum, guest) => sum + (guest.plus_one ? 2 : 1),
     0
@@ -73,7 +88,7 @@ export function GuestList() {
   const declinedGuests = guests.filter((g) => g.rsvp_status === "declined").length;
 
   const addGuest = async () => {
-    if (formData.name && formData.email && user) {
+    if (formData.name && formData.email && formData.rsvp_status && user) {
       try {
         const { data, error } = await supabase
           .from("guests")
@@ -82,7 +97,7 @@ export function GuestList() {
             name: formData.name,
             email: formData.email,
             phone: formData.phone || "",
-            rsvp_status: formData.rsvp_status || "pending",
+            rsvp_status: formData.rsvp_status,
             plus_one: formData.plus_one || false,
             table_number: formData.table_number,
             dietary_restrictions: formData.dietary_restrictions,
@@ -94,7 +109,9 @@ export function GuestList() {
 
         if (data) {
           setGuests([data, ...guests]);
-          setFormData({ rsvp_status: "pending", plus_one: false });
+          // Reset form to default status (pending) if available
+          const defaultStatus = rsvpStatuses.length > 0 ? rsvpStatuses[0].name as "pending" | "accepted" | "declined" : undefined;
+          setFormData({ rsvp_status: defaultStatus, plus_one: false });
           setIsDialogOpen(false);
         }
       } catch (error) {
@@ -235,9 +252,11 @@ export function GuestList() {
                   }
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
-                  <option value="pending">Pending</option>
-                  <option value="accepted">Accepted</option>
-                  <option value="declined">Declined</option>
+                  {rsvpStatuses.map((status) => (
+                    <option key={status.name} value={status.name}>
+                      {status.label}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="flex items-center space-x-2">
