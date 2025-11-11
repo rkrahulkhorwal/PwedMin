@@ -1,5 +1,8 @@
 "use client";
 
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Card,
   CardContent,
@@ -13,77 +16,140 @@ import {
   CheckSquare,
   Users,
   Calendar,
-  TrendingUp,
-  Clock,
+  Loader2,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 
 export function Dashboard() {
-  const weddingDate = new Date("2025-06-15");
+  const { user } = useAuth();
+  const supabase = createClient();
+  const [loading, setLoading] = useState(true);
+  const [weddingDate, setWeddingDate] = useState<Date | null>(null);
+  const [totalBudget, setTotalBudget] = useState(0);
+  const [totalSpent, setTotalSpent] = useState(0);
+  const [tasksCompleted, setTasksCompleted] = useState(0);
+  const [totalTasks, setTotalTasks] = useState(0);
+  const [guestsAccepted, setGuestsAccepted] = useState(0);
+  const [totalGuests, setTotalGuests] = useState(0);
+
+  useEffect(() => {
+    if (user) {
+      fetchDashboardData();
+    }
+  }, [user]);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+
+      // Fetch profile data
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("wedding_date, total_budget")
+        .eq("id", user!.id)
+        .single();
+
+      if (profile) {
+        if (profile.wedding_date) {
+          setWeddingDate(new Date(profile.wedding_date));
+        }
+        setTotalBudget(Number(profile.total_budget) || 0);
+      }
+
+      // Fetch budget items
+      const { data: budgetItems } = await supabase
+        .from("budget_items")
+        .select("amount")
+        .eq("user_id", user!.id);
+
+      if (budgetItems) {
+        const spent = budgetItems.reduce((sum, item) => sum + Number(item.amount), 0);
+        setTotalSpent(spent);
+      }
+
+      // Fetch checklist items
+      const { data: checklistItems } = await supabase
+        .from("checklist_items")
+        .select("completed")
+        .eq("user_id", user!.id);
+
+      if (checklistItems) {
+        setTotalTasks(checklistItems.length);
+        setTasksCompleted(checklistItems.filter((item) => item.completed).length);
+      }
+
+      // Fetch guests
+      const { data: guests } = await supabase
+        .from("guests")
+        .select("rsvp_status, plus_one")
+        .eq("user_id", user!.id);
+
+      if (guests) {
+        const total = guests.reduce((sum, guest) => sum + (guest.plus_one ? 2 : 1), 0);
+        const accepted = guests
+          .filter((g) => g.rsvp_status === "accepted")
+          .reduce((sum, guest) => sum + (guest.plus_one ? 2 : 1), 0);
+        setTotalGuests(total);
+        setGuestsAccepted(accepted);
+      }
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   const today = new Date();
-  const daysUntilWedding = Math.ceil(
-    (weddingDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-  );
+  const daysUntilWedding = weddingDate
+    ? Math.ceil((weddingDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+
+  const budgetPercentage = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
+  const tasksPercentage = totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0;
+  const guestsPercentage = totalGuests > 0 ? (guestsAccepted / totalGuests) * 100 : 0;
 
   const stats = [
     {
       title: "Days Until Wedding",
-      value: daysUntilWedding,
+      value: daysUntilWedding !== null ? daysUntilWedding : "Not set",
       icon: Calendar,
-      description: `${weddingDate.toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      })}`,
+      description: weddingDate
+        ? weddingDate.toLocaleDateString("en-US", {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          })
+        : "Set your wedding date in profile",
       color: "text-primary",
     },
     {
       title: "Budget Progress",
-      value: "$35,000",
+      value: `$${totalSpent.toLocaleString()}`,
       icon: DollarSign,
-      description: "70% of $50,000 budget used",
+      description: `${budgetPercentage.toFixed(0)}% of $${totalBudget.toLocaleString()} budget used`,
       color: "text-green-600",
     },
     {
       title: "Tasks Completed",
-      value: "6/10",
+      value: `${tasksCompleted}/${totalTasks}`,
       icon: CheckSquare,
-      description: "60% of checklist done",
+      description: `${tasksPercentage.toFixed(0)}% of checklist done`,
       color: "text-blue-600",
     },
     {
       title: "Guest RSVPs",
-      value: "85/120",
+      value: `${guestsAccepted}/${totalGuests}`,
       icon: Users,
-      description: "71% confirmed attendance",
+      description: `${guestsPercentage.toFixed(0)}% confirmed attendance`,
       color: "text-purple-600",
-    },
-  ];
-
-  const recentActivity = [
-    {
-      action: "Budget item added",
-      detail: "DJ Services - $2,500",
-      time: "2 hours ago",
-      icon: DollarSign,
-    },
-    {
-      action: "Task completed",
-      detail: "Book photographer",
-      time: "1 day ago",
-      icon: CheckSquare,
-    },
-    {
-      action: "Guest RSVP",
-      detail: "Sarah Davis accepted invitation",
-      time: "2 days ago",
-      icon: Users,
-    },
-    {
-      action: "Supplier added",
-      detail: "Perfect Moments Photography",
-      time: "3 days ago",
-      icon: Calendar,
     },
   ];
 
@@ -132,32 +198,40 @@ export function Dashboard() {
             <CardDescription>Time until your special day</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="text-center">
-              <div className="text-6xl font-bold text-primary mb-2">
-                {daysUntilWedding}
-              </div>
-              <p className="text-xl text-muted-foreground">days to go</p>
-            </div>
-            <div className="grid grid-cols-3 gap-4 text-center pt-4">
-              <div>
-                <div className="text-2xl font-semibold">
-                  {Math.floor(daysUntilWedding / 7)}
+            {daysUntilWedding !== null ? (
+              <>
+                <div className="text-center">
+                  <div className="text-6xl font-bold text-primary mb-2">
+                    {daysUntilWedding}
+                  </div>
+                  <p className="text-xl text-muted-foreground">days to go</p>
                 </div>
-                <div className="text-xs text-muted-foreground">weeks</div>
-              </div>
-              <div>
-                <div className="text-2xl font-semibold">
-                  {Math.floor(daysUntilWedding / 30)}
+                <div className="grid grid-cols-3 gap-4 text-center pt-4">
+                  <div>
+                    <div className="text-2xl font-semibold">
+                      {Math.floor(daysUntilWedding / 7)}
+                    </div>
+                    <div className="text-xs text-muted-foreground">weeks</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-semibold">
+                      {Math.floor(daysUntilWedding / 30)}
+                    </div>
+                    <div className="text-xs text-muted-foreground">months</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-semibold">
+                      {Math.floor(daysUntilWedding / 7) % 4}
+                    </div>
+                    <div className="text-xs text-muted-foreground">weeks left</div>
+                  </div>
                 </div>
-                <div className="text-xs text-muted-foreground">months</div>
+              </>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                Set your wedding date to see the countdown
               </div>
-              <div>
-                <div className="text-2xl font-semibold">
-                  {Math.floor(daysUntilWedding / 7) % 4}
-                </div>
-                <div className="text-xs text-muted-foreground">weeks left</div>
-              </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
@@ -170,68 +244,27 @@ export function Dashboard() {
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span>Budget Planning</span>
-                <span className="font-semibold">70%</span>
+                <span className="font-semibold">{budgetPercentage.toFixed(0)}%</span>
               </div>
-              <Progress value={70} className="h-2" />
+              <Progress value={Math.min(budgetPercentage, 100)} className="h-2" />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span>Task Completion</span>
-                <span className="font-semibold">60%</span>
+                <span className="font-semibold">{tasksPercentage.toFixed(0)}%</span>
               </div>
-              <Progress value={60} className="h-2" />
+              <Progress value={tasksPercentage} className="h-2" />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span>Guest RSVPs</span>
-                <span className="font-semibold">71%</span>
+                <span className="font-semibold">{guestsPercentage.toFixed(0)}%</span>
               </div>
-              <Progress value={71} className="h-2" />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span>Supplier Bookings</span>
-                <span className="font-semibold">85%</span>
-              </div>
-              <Progress value={85} className="h-2" />
+              <Progress value={guestsPercentage} className="h-2" />
             </div>
           </CardContent>
         </Card>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>Your latest planning updates</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {recentActivity.map((activity, index) => {
-              const Icon = activity.icon;
-              return (
-                <div
-                  key={index}
-                  className="flex items-center gap-4 p-3 rounded-lg hover:bg-accent/50 transition-colors"
-                >
-                  <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10">
-                    <Icon className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium">{activity.action}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {activity.detail}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Clock className="h-3 w-3" />
-                    {activity.time}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
 
       <Card className="bg-gradient-to-r from-primary/10 to-pink-500/10 border-primary/20">
         <CardContent className="flex items-center justify-between p-6">

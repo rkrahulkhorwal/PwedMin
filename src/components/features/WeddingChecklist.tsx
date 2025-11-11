@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Card,
   CardContent,
@@ -12,7 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Trash2, CheckCircle2 } from "lucide-react";
+import { Plus, Trash2, CheckCircle2, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -23,33 +25,42 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
+import type { Database } from "@/lib/types/database.types";
 
-interface ChecklistItem {
-  id: string;
-  task: string;
-  completed: boolean;
-  category: string;
-  dueDate?: string;
-}
-
-const defaultTasks: ChecklistItem[] = [
-  { id: "1", task: "Book ceremony venue", completed: false, category: "venue" },
-  { id: "2", task: "Book reception venue", completed: false, category: "venue" },
-  { id: "3", task: "Hire wedding planner", completed: false, category: "planning" },
-  { id: "4", task: "Create guest list", completed: false, category: "guests" },
-  { id: "5", task: "Send save-the-dates", completed: false, category: "guests" },
-  { id: "6", task: "Book photographer", completed: false, category: "vendors" },
-  { id: "7", task: "Book videographer", completed: false, category: "vendors" },
-  { id: "8", task: "Book caterer", completed: false, category: "vendors" },
-  { id: "9", task: "Choose wedding cake", completed: false, category: "food" },
-  { id: "10", task: "Book florist", completed: false, category: "decor" },
-];
+type ChecklistItem = Database["public"]["Tables"]["checklist_items"]["Row"];
 
 export function WeddingChecklist() {
-  const [tasks, setTasks] = useState<ChecklistItem[]>(defaultTasks);
+  const { user } = useAuth();
+  const supabase = createClient();
+  const [loading, setLoading] = useState(true);
+  const [tasks, setTasks] = useState<ChecklistItem[]>([]);
   const [newTask, setNewTask] = useState("");
   const [newCategory, setNewCategory] = useState("planning");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      fetchTasks();
+    }
+  }, [user]);
+
+  const fetchTasks = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("checklist_items")
+        .select("*")
+        .eq("user_id", user!.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setTasks(data || []);
+    } catch (error) {
+      console.error("Error fetching tasks:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const completedTasks = tasks.filter((task) => task.completed).length;
   const totalTasks = tasks.length;
@@ -65,36 +76,79 @@ export function WeddingChecklist() {
     { id: "planning", label: "Planning" },
   ];
 
-  const toggleTask = (id: string) => {
-    setTasks(
-      tasks.map((task) =>
-        task.id === id ? { ...task, completed: !task.completed } : task
-      )
-    );
-  };
+  const toggleTask = async (id: string, currentCompleted: boolean) => {
+    try {
+      const { error } = await supabase
+        .from("checklist_items")
+        .update({ completed: !currentCompleted })
+        .eq("id", id);
 
-  const addTask = () => {
-    if (newTask.trim()) {
-      const task: ChecklistItem = {
-        id: Date.now().toString(),
-        task: newTask,
-        completed: false,
-        category: newCategory,
-      };
-      setTasks([...tasks, task]);
-      setNewTask("");
-      setIsDialogOpen(false);
+      if (error) throw error;
+
+      setTasks(
+        tasks.map((task) =>
+          task.id === id ? { ...task, completed: !currentCompleted } : task
+        )
+      );
+    } catch (error) {
+      console.error("Error updating task:", error);
     }
   };
 
-  const deleteTask = (id: string) => {
-    setTasks(tasks.filter((task) => task.id !== id));
+  const addTask = async () => {
+    if (newTask.trim() && user) {
+      try {
+        const { data, error } = await supabase
+          .from("checklist_items")
+          .insert({
+            user_id: user.id,
+            task: newTask,
+            completed: false,
+            category: newCategory,
+            priority: "medium",
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+          setTasks([data, ...tasks]);
+          setNewTask("");
+          setIsDialogOpen(false);
+        }
+      } catch (error) {
+        console.error("Error adding task:", error);
+      }
+    }
+  };
+
+  const deleteTask = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from("checklist_items")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+      setTasks(tasks.filter((task) => task.id !== id));
+    } catch (error) {
+      console.error("Error deleting task:", error);
+    }
   };
 
   const getTasksByCategory = (category: string) => {
     if (category === "all") return tasks;
     return tasks.filter((task) => task.category === category);
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -202,7 +256,7 @@ export function WeddingChecklist() {
                       <div className="flex items-center gap-4 flex-1">
                         <Checkbox
                           checked={task.completed}
-                          onCheckedChange={() => toggleTask(task.id)}
+                          onCheckedChange={() => toggleTask(task.id, task.completed)}
                         />
                         <span
                           className={`${

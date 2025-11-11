@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Card,
   CardContent,
@@ -11,7 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, Users, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Plus, Trash2, Users, CheckCircle2, XCircle, Clock, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -21,117 +23,131 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { Database } from "@/lib/types/database.types";
 
-interface Guest {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  rsvp: "pending" | "accepted" | "declined";
-  plusOne: boolean;
-  tableNumber?: number;
-  dietaryRestrictions?: string;
-}
-
-const defaultGuests: Guest[] = [
-  {
-    id: "1",
-    name: "John & Mary Smith",
-    email: "john.smith@email.com",
-    phone: "(555) 111-2222",
-    rsvp: "accepted",
-    plusOne: true,
-    tableNumber: 1,
-  },
-  {
-    id: "2",
-    name: "Emily Johnson",
-    email: "emily.j@email.com",
-    phone: "(555) 222-3333",
-    rsvp: "accepted",
-    plusOne: false,
-    tableNumber: 2,
-    dietaryRestrictions: "Vegetarian",
-  },
-  {
-    id: "3",
-    name: "Michael Brown",
-    email: "mbrown@email.com",
-    phone: "(555) 333-4444",
-    rsvp: "pending",
-    plusOne: false,
-  },
-  {
-    id: "4",
-    name: "Sarah Davis",
-    email: "sarah.d@email.com",
-    phone: "(555) 444-5555",
-    rsvp: "declined",
-    plusOne: false,
-  },
-];
+type Guest = Database["public"]["Tables"]["guests"]["Row"];
 
 export function GuestList() {
-  const [guests, setGuests] = useState<Guest[]>(defaultGuests);
+  const { user } = useAuth();
+  const supabase = createClient();
+  const [loading, setLoading] = useState(true);
+  const [guests, setGuests] = useState<Guest[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [formData, setFormData] = useState<Partial<Guest>>({
-    rsvp: "pending",
-    plusOne: false,
+    rsvp_status: "pending",
+    plus_one: false,
   });
 
-  const totalGuests = guests.reduce(
-    (sum, guest) => sum + (guest.plusOne ? 2 : 1),
-    0
-  );
-  const acceptedGuests = guests
-    .filter((g) => g.rsvp === "accepted")
-    .reduce((sum, guest) => sum + (guest.plusOne ? 2 : 1), 0);
-  const pendingGuests = guests.filter((g) => g.rsvp === "pending").length;
-  const declinedGuests = guests.filter((g) => g.rsvp === "declined").length;
+  useEffect(() => {
+    if (user) {
+      fetchGuests();
+    }
+  }, [user]);
 
-  const addGuest = () => {
-    if (formData.name && formData.email) {
-      const newGuest: Guest = {
-        id: Date.now().toString(),
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone || "",
-        rsvp: formData.rsvp || "pending",
-        plusOne: formData.plusOne || false,
-        tableNumber: formData.tableNumber,
-        dietaryRestrictions: formData.dietaryRestrictions,
-      };
-      setGuests([...guests, newGuest]);
-      setFormData({ rsvp: "pending", plusOne: false });
-      setIsDialogOpen(false);
+  const fetchGuests = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("guests")
+        .select("*")
+        .eq("user_id", user!.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setGuests(data || []);
+    } catch (error) {
+      console.error("Error fetching guests:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const deleteGuest = (id: string) => {
-    setGuests(guests.filter((guest) => guest.id !== id));
+  const totalGuests = guests.reduce(
+    (sum, guest) => sum + (guest.plus_one ? 2 : 1),
+    0
+  );
+  const acceptedGuests = guests
+    .filter((g) => g.rsvp_status === "accepted")
+    .reduce((sum, guest) => sum + (guest.plus_one ? 2 : 1), 0);
+  const pendingGuests = guests.filter((g) => g.rsvp_status === "pending").length;
+  const declinedGuests = guests.filter((g) => g.rsvp_status === "declined").length;
+
+  const addGuest = async () => {
+    if (formData.name && formData.email && user) {
+      try {
+        const { data, error } = await supabase
+          .from("guests")
+          .insert({
+            user_id: user.id,
+            name: formData.name,
+            email: formData.email,
+            phone: formData.phone || "",
+            rsvp_status: formData.rsvp_status || "pending",
+            plus_one: formData.plus_one || false,
+            table_number: formData.table_number,
+            dietary_restrictions: formData.dietary_restrictions,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+          setGuests([data, ...guests]);
+          setFormData({ rsvp_status: "pending", plus_one: false });
+          setIsDialogOpen(false);
+        }
+      } catch (error) {
+        console.error("Error adding guest:", error);
+      }
+    }
   };
 
-  const updateRSVP = (id: string, rsvp: "pending" | "accepted" | "declined") => {
-    setGuests(
-      guests.map((guest) => (guest.id === id ? { ...guest, rsvp } : guest))
-    );
+  const deleteGuest = async (id: string) => {
+    try {
+      const { error } = await supabase.from("guests").delete().eq("id", id);
+
+      if (error) throw error;
+      setGuests(guests.filter((guest) => guest.id !== id));
+    } catch (error) {
+      console.error("Error deleting guest:", error);
+    }
+  };
+
+  const updateRSVP = async (
+    id: string,
+    rsvp: "pending" | "accepted" | "declined"
+  ) => {
+    try {
+      const { error } = await supabase
+        .from("guests")
+        .update({ rsvp_status: rsvp })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      setGuests(
+        guests.map((guest) =>
+          guest.id === id ? { ...guest, rsvp_status: rsvp } : guest
+        )
+      );
+    } catch (error) {
+      console.error("Error updating RSVP:", error);
+    }
   };
 
   const getGuestsByRSVP = (status: string) => {
     if (status === "all") return guests;
-    return guests.filter((guest) => guest.rsvp === status);
+    return guests.filter((guest) => guest.rsvp_status === status);
   };
 
-  const getRSVPIcon = (status: string) => {
-    switch (status) {
-      case "accepted":
-        return <CheckCircle2 className="h-4 w-4 text-green-600" />;
-      case "declined":
-        return <XCircle className="h-4 w-4 text-destructive" />;
-      default:
-        return <Clock className="h-4 w-4 text-yellow-600" />;
-    }
-  };
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -197,11 +213,11 @@ export function GuestList() {
                   id="tableNumber"
                   type="number"
                   placeholder="1"
-                  value={formData.tableNumber || ""}
+                  value={formData.table_number || ""}
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      tableNumber: parseInt(e.target.value) || undefined,
+                      table_number: parseInt(e.target.value) || undefined,
                     })
                   }
                 />
@@ -210,11 +226,11 @@ export function GuestList() {
                 <Label htmlFor="rsvpStatus">RSVP Status</Label>
                 <select
                   id="rsvpStatus"
-                  value={formData.rsvp}
+                  value={formData.rsvp_status}
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      rsvp: e.target.value as "pending" | "accepted" | "declined",
+                      rsvp_status: e.target.value as "pending" | "accepted" | "declined",
                     })
                   }
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -228,9 +244,9 @@ export function GuestList() {
                 <input
                   type="checkbox"
                   id="plusOne"
-                  checked={formData.plusOne}
+                  checked={formData.plus_one}
                   onChange={(e) =>
-                    setFormData({ ...formData, plusOne: e.target.checked })
+                    setFormData({ ...formData, plus_one: e.target.checked })
                   }
                   className="h-4 w-4"
                 />
@@ -243,11 +259,11 @@ export function GuestList() {
                 <Input
                   id="dietary"
                   placeholder="e.g., Vegetarian, Gluten-free"
-                  value={formData.dietaryRestrictions || ""}
+                  value={formData.dietary_restrictions || ""}
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      dietaryRestrictions: e.target.value,
+                      dietary_restrictions: e.target.value,
                     })
                   }
                 />
@@ -349,7 +365,7 @@ export function GuestList() {
                       <div className="flex-1 space-y-1">
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{guest.name}</span>
-                          {guest.plusOne && (
+                          {guest.plus_one && (
                             <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">
                               +1
                             </span>
@@ -358,28 +374,28 @@ export function GuestList() {
                         <div className="text-sm text-muted-foreground">
                           {guest.email} {guest.phone && `• ${guest.phone}`}
                         </div>
-                        {guest.tableNumber && (
+                        {guest.table_number && (
                           <div className="text-xs text-muted-foreground">
-                            Table {guest.tableNumber}
+                            Table {guest.table_number}
                           </div>
                         )}
-                        {guest.dietaryRestrictions && (
+                        {guest.dietary_restrictions && (
                           <div className="text-xs text-muted-foreground">
-                            🥗 {guest.dietaryRestrictions}
+                            🥗 {guest.dietary_restrictions}
                           </div>
                         )}
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="flex gap-1">
                           <Button
-                            variant={guest.rsvp === "accepted" ? "default" : "outline"}
+                            variant={guest.rsvp_status === "accepted" ? "default" : "outline"}
                             size="sm"
                             onClick={() => updateRSVP(guest.id, "accepted")}
                           >
                             Accept
                           </Button>
                           <Button
-                            variant={guest.rsvp === "declined" ? "destructive" : "outline"}
+                            variant={guest.rsvp_status === "declined" ? "destructive" : "outline"}
                             size="sm"
                             onClick={() => updateRSVP(guest.id, "declined")}
                           >

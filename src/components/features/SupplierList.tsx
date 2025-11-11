@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Card,
   CardContent,
@@ -11,7 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, Phone, Mail, MapPin, DollarSign } from "lucide-react";
+import { Plus, Trash2, Phone, Mail, MapPin, DollarSign, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -20,57 +22,43 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import type { Database } from "@/lib/types/database.types";
 
-interface Supplier {
-  id: string;
-  name: string;
-  category: string;
-  contact: string;
-  email: string;
-  phone: string;
-  cost: number;
-  notes: string;
-}
-
-const defaultSuppliers: Supplier[] = [
-  {
-    id: "1",
-    name: "Grand Palace Hotel",
-    category: "Venue",
-    contact: "John Smith",
-    email: "events@grandpalace.com",
-    phone: "(555) 123-4567",
-    cost: 15000,
-    notes: "Main ceremony and reception venue",
-  },
-  {
-    id: "2",
-    name: "Delicious Catering Co.",
-    category: "Catering",
-    contact: "Sarah Johnson",
-    email: "info@deliciouscatering.com",
-    phone: "(555) 234-5678",
-    cost: 12000,
-    notes: "3-course meal for 150 guests",
-  },
-  {
-    id: "3",
-    name: "Perfect Moments Photography",
-    category: "Photography",
-    contact: "Mike Chen",
-    email: "mike@perfectmoments.com",
-    phone: "(555) 345-6789",
-    cost: 5000,
-    notes: "Full day coverage + album",
-  },
-];
+type Supplier = Database["public"]["Tables"]["suppliers"]["Row"];
 
 export function SupplierList() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>(defaultSuppliers);
+  const { user } = useAuth();
+  const supabase = createClient();
+  const [loading, setLoading] = useState(true);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [formData, setFormData] = useState<Partial<Supplier>>({
     category: "Venue",
   });
+
+  useEffect(() => {
+    if (user) {
+      fetchSuppliers();
+    }
+  }, [user]);
+
+  const fetchSuppliers = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("suppliers")
+        .select("*")
+        .eq("user_id", user!.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setSuppliers(data || []);
+    } catch (error) {
+      console.error("Error fetching suppliers:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const categories = [
     "Venue",
@@ -84,29 +72,60 @@ export function SupplierList() {
     "Other",
   ];
 
-  const addSupplier = () => {
-    if (formData.name && formData.contact) {
-      const newSupplier: Supplier = {
-        id: Date.now().toString(),
-        name: formData.name,
-        category: formData.category || "Other",
-        contact: formData.contact,
-        email: formData.email || "",
-        phone: formData.phone || "",
-        cost: formData.cost || 0,
-        notes: formData.notes || "",
-      };
-      setSuppliers([...suppliers, newSupplier]);
-      setFormData({ category: "Venue" });
-      setIsDialogOpen(false);
+  const addSupplier = async () => {
+    if (formData.name && formData.contact_person && user) {
+      try {
+        const { data, error } = await supabase
+          .from("suppliers")
+          .insert({
+            user_id: user.id,
+            name: formData.name,
+            category: formData.category || "Other",
+            contact_person: formData.contact_person,
+            email: formData.email || "",
+            phone: formData.phone || "",
+            cost: formData.cost || 0,
+            notes: formData.notes || "",
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+          setSuppliers([data, ...suppliers]);
+          setFormData({ category: "Venue" });
+          setIsDialogOpen(false);
+        }
+      } catch (error) {
+        console.error("Error adding supplier:", error);
+      }
     }
   };
 
-  const deleteSupplier = (id: string) => {
-    setSuppliers(suppliers.filter((supplier) => supplier.id !== id));
+  const deleteSupplier = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from("suppliers")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+      setSuppliers(suppliers.filter((supplier) => supplier.id !== id));
+    } catch (error) {
+      console.error("Error deleting supplier:", error);
+    }
   };
 
-  const totalCost = suppliers.reduce((sum, supplier) => sum + supplier.cost, 0);
+  const totalCost = suppliers.reduce((sum, supplier) => sum + Number(supplier.cost), 0);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -165,9 +184,9 @@ export function SupplierList() {
                 <Input
                   id="contact"
                   placeholder="e.g., Jane Doe"
-                  value={formData.contact || ""}
+                  value={formData.contact_person || ""}
                   onChange={(e) =>
-                    setFormData({ ...formData, contact: e.target.value })
+                    setFormData({ ...formData, contact_person: e.target.value })
                   }
                 />
               </div>
@@ -256,10 +275,12 @@ export function SupplierList() {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center gap-2 text-sm">
-                <MapPin className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium">{supplier.contact}</span>
-              </div>
+              {supplier.contact_person && (
+                <div className="flex items-center gap-2 text-sm">
+                  <MapPin className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium">{supplier.contact_person}</span>
+                </div>
+              )}
               {supplier.phone && (
                 <div className="flex items-center gap-2 text-sm">
                   <Phone className="h-4 w-4 text-muted-foreground" />
@@ -285,7 +306,7 @@ export function SupplierList() {
               <div className="flex items-center gap-2 text-sm">
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
                 <span className="font-semibold text-primary">
-                  ${supplier.cost.toLocaleString()}
+                  ${Number(supplier.cost).toLocaleString()}
                 </span>
               </div>
               {supplier.notes && (
