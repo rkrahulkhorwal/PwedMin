@@ -32,7 +32,7 @@ export function BudgetTracker() {
   const { user } = useAuth();
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
-  const [totalBudget, setTotalBudget] = useState<number>(50000);
+  const [totalBudget, setTotalBudget] = useState<number>(0);
   const [items, setItems] = useState<BudgetItem[]>([]);
   const [newCategory, setNewCategory] = useState("");
   const [newAmount, setNewAmount] = useState("");
@@ -57,7 +57,7 @@ export function BudgetTracker() {
         .single();
 
       if (profile) {
-        setTotalBudget(Number(profile.total_budget) || 50000);
+        setTotalBudget(Number(profile.total_budget) || 0);
       }
 
       // Fetch budget items
